@@ -346,6 +346,14 @@ def Steane_magic_state_logical() -> Register:
 
     return q
 
+
+@squin.kernel
+def Steane_T_logical_reset(logical_block) -> Register:
+    for i in range(7):
+        squin.reset(logical_block[i])
+    return logical_block
+
+
 @squin.kernel
 def Steane_T_injection_logical(data_block, magic_block) -> Register:
     Steane_CNOT_logical(data_block, magic_block)
@@ -355,12 +363,22 @@ def Steane_T_injection_logical(data_block, magic_block) -> Register:
     if m:
         Steane_S_logical(data_block)
 
+    Steane_T_logical_reset(magic_block)
+
     return data_block
 
 @squin.kernel
 def Steane_Tdg_injection_logical(data_block, magic_block) -> Register:
-    Steane_T_injection_logical(data_block, magic_block)
+    Steane_CNOT_logical(data_block, magic_block)
+
+    m = Steane_measure_logical_Z_weight3(magic_block)
+
+    if m:
+        Steane_S_logical(data_block)
+
     Steane_Sdg_logical(data_block)
+    Steane_T_logical_reset(magic_block)
+
     return data_block
 
 @squin.kernel
