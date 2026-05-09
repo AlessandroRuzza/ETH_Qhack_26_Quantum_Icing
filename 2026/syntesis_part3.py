@@ -5,7 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from qiskit.synthesis import gridsynth_rz
 
-from syntesis_1_2 import (
+from gate_syntesis import (
     Rz,
     gate_distance,
     gate_sequence_from_circuit,
