@@ -415,3 +415,61 @@ def print_metrics(n: int, epsilon: float = 1e-10) -> None:
     print(f"  Clifford  : {clifford}  {dict(ops)}")
     print(f"  Total     : {total}")
     print(f"  Depth     : {qk_circ.depth()}")
+
+@squin.kernel
+def Steane_zero_logical_graph() -> Register:
+    q = squin.qalloc(7)
+
+    # The diagram starts from |+> on every physical qubit.
+    # qalloc starts from |0>, so apply H to all qubits first.
+    for i in range(7):
+        squin.h(q[i])
+
+    # CZ edges from the graph-state preparation circuit.
+    # These are the black-dot vertical connections in the figure.
+    CZ_gate(q[0], q[6])
+
+    CZ_gate(q[1], q[3])
+    CZ_gate(q[5], q[3])
+
+    CZ_gate(q[0], q[4])
+    CZ_gate(q[5], q[6])
+
+    CZ_gate(q[1], q[2])
+    CZ_gate(q[0], q[2])
+
+    CZ_gate(q[5], q[4])
+    CZ_gate(q[1], q[4])
+
+    # Final H gates shown in the figure.
+    squin.h(q[2])
+    squin.h(q[3])
+    squin.h(q[4])
+    squin.h(q[6])
+
+    return q
+
+@squin.kernel
+def Steane_H_logical(q) -> Register:
+    for i in range(7):
+        squin.h(q[i])
+    return q
+
+@squin.kernel
+def Steane_S_logical(q) -> Register:
+    for i in range(7):
+        squin.s(q[i])
+        squin.s(q[i])
+        squin.s(q[i])
+    return q
+
+@squin.kernel
+def Steane_CNOT_logical(control_block, target_block) -> Register:
+    for i in range(7):
+        squin.cx(control_block[i], target_block[i])
+    return control_block + target_block
+
+@squin.kernel
+def test_steane_logical():
+    qL = Steane_zero_logical_graph()
+
