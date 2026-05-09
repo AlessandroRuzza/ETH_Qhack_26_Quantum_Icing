@@ -196,3 +196,14 @@ def make_postselected_dropout_kernel(sequence):
         return apply_postselected_gate_sequence(qubits[0], qubits[1:], sequence)
 
     return postselected_dropout_kernel
+
+
+@squin.kernel
+def Steane_measure_logical_Z_weight3(q) -> int:
+    m0 = squin.measure(q[0])
+    m1 = squin.measure(q[1])
+    m2 = squin.measure(q[2])
+
+    return m0 ^ m1 ^ m2
+
+    

@@ -302,6 +302,12 @@ def Steane_CNOT_logical(control_block, target_block) -> Register:
         squin.cx(control_block[i], target_block[i])
     return control_block + target_block
 
+@squin.kernel
+def Steane_Sdg_logical(q) -> Register:
+    for i in range(7):
+        squin.s(q[i])
+    return q
+
 
 
 #-----------------------
@@ -312,4 +318,71 @@ def test_steane_logical():
     qL = Steane_zero_logical_graph()
 
 
+@squin.kernel
+def Steane_magic_state_logical() -> Register:
+    q = squin.qalloc(7)
 
+    squin.h(q[0])
+    squin.h(q[1])
+    squin.h(q[3])
+
+    squin.h(q[6])
+    squin.t(q[6])
+
+    squin.cx(q[0], q[2])
+    squin.cx(q[1], q[2])
+
+    squin.cx(q[0], q[4])
+    squin.cx(q[3], q[4])
+
+    squin.cx(q[1], q[5])
+    squin.cx(q[3], q[5])
+
+    for i in range(6):
+        squin.cx(q[6], q[i])
+
+    squin.cx(q[2], q[6])
+    squin.cx(q[3], q[6])
+
+    return q
+
+@squin.kernel
+def Steane_T_injection_logical(data_block, magic_block) -> Register:
+    Steane_CNOT_logical(data_block, magic_block)
+
+    m = Steane_measure_logical_Z_weight3(magic_block)
+
+    if m:
+        Steane_S_logical(data_block)
+
+    return data_block
+
+@squin.kernel
+def Steane_Tdg_injection_logical(data_block, magic_block) -> Register:
+    Steane_T_injection_logical(data_block, magic_block)
+    Steane_Sdg_logical(data_block)
+    return data_block
+
+@squin.kernel
+def Steane_apply_logical_gate_sequence(data_block, magic_blocks, sequence) -> Register:
+    magic_index = 0
+
+    for gate_name in sequence:
+        if gate_name == "h":
+            Steane_H_logical(data_block)
+
+        elif gate_name == "s":
+            Steane_S_logical(data_block)
+
+        elif gate_name == "sdg":
+            Steane_Sdg_logical(data_block)
+
+        elif gate_name == "t":
+            Steane_T_injection_logical(data_block, magic_blocks[magic_index])
+            magic_index += 1
+
+        elif gate_name == "tdg":
+            Steane_Tdg_injection_logical(data_block, magic_blocks[magic_index])
+            magic_index += 1
+
+    return data_block
