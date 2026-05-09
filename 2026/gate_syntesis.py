@@ -169,82 +169,82 @@ def Ry_gate(n: int, epsilon: float = 1e-10):
 
 
 
-@squin.kernel
-def Injected_T_gate(qubit, ancilla) -> Qubit:
-    # Prepare the magic state |A> = T|+> on the ancilla.
-    squin.h(ancilla)
-    squin.t(ancilla)
+def Rz_gate_injected(n: int, epsilon: float = 1e-10):
+    """Factory: come Rz_gate ma i gate T/Tdg sono applicati via magic-state injection.
+    Restituisce un kernel (qubit, ancillas) con t_count_from_sequence(seq) ancillas.
+    Per n=0,1 non servono ancillas e il kernel restituito prende solo (qubit,).
+    """
+    if n == 0:
+        return X_gate
 
-    # Entangle the data qubit with the magic-state ancilla.
-    squin.cx(qubit, ancilla)
+    if n == 1:
+        @squin.kernel
+        def _rz_s(qubit) -> Register:
+            squin.s(qubit)
+            return qubit
+        return _rz_s
 
-    # Measure the ancilla.
-    measurement = squin.measure(ancilla)
+    sequence = ("t",) if n == 2 else gate_sequence_from_circuit(gridsynth_rz(np.pi / 2**n, epsilon=epsilon))
 
-    # Feed-forward correction.
-    # If the measurement is 1, the data qubit has T^\dagger instead of T.
-    # Applying S gives S T^\dagger = T.
-    if measurement:
-        squin.s(qubit)
+    @squin.kernel
+    def _rz_injected(qubit, ancillas) -> Qubit:
+        return apply_injected_gate_sequence(qubit, ancillas, sequence)
 
-    return qubit
-
-
-@squin.kernel
-def Injected_Tdg_gate(qubit, ancilla) -> Qubit:
-    qubit = Injected_T_gate(qubit, ancilla)
-    squin.s(qubit)
-    squin.s(qubit)
-    squin.s(qubit)
-    return qubit
+    return _rz_injected
 
 
+def Rx_gate_injected(n: int, epsilon: float = 1e-10):
+    """Rx(π/2^n) = H · Rz_injected(π/2^n) · H"""
+    rz_inj = Rz_gate_injected(n, epsilon)
 
-@squin.kernel
-def apply_injected_gate_sequence(qubit, ancillas, sequence) -> Qubit:
-    ancilla_index = 0
-
-    for gate_name in sequence:
-        if gate_name == "h":
+    if n <= 1:
+        @squin.kernel
+        def _rx(qubit) -> Register:
             squin.h(qubit)
-        elif gate_name == "s":
+            rz_inj(qubit)
+            squin.h(qubit)
+            return qubit
+        return _rx
+
+    @squin.kernel
+    def _rx(qubit, ancillas) -> Qubit:
+        squin.h(qubit)
+        qubit = rz_inj(qubit, ancillas)
+        squin.h(qubit)
+        return qubit
+
+    return _rx
+
+
+def Ry_gate_injected(n: int, epsilon: float = 1e-10):
+    """Ry(π/2^n) = S† · H · Rz_injected(π/2^n) · H · S"""
+    rz_inj = Rz_gate_injected(n, epsilon)
+
+    if n <= 1:
+        @squin.kernel
+        def _ry(qubit) -> Register:
             squin.s(qubit)
-        elif gate_name == "sdg":
             squin.s(qubit)
             squin.s(qubit)
+            squin.h(qubit)
+            rz_inj(qubit)
+            squin.h(qubit)
             squin.s(qubit)
-        elif gate_name == "t":
-            qubit = Injected_T_gate(qubit, ancillas[ancilla_index])
-            ancilla_index += 1
-        elif gate_name == "tdg":
-            qubit = Injected_Tdg_gate(qubit, ancillas[ancilla_index])
-            ancilla_index += 1
+            return qubit
+        return _ry
 
-    return qubit
+    @squin.kernel
+    def _ry(qubit, ancillas) -> Qubit:
+        squin.s(qubit)
+        squin.s(qubit)
+        squin.s(qubit)
+        squin.h(qubit)
+        qubit = rz_inj(qubit, ancillas)
+        squin.h(qubit)
+        squin.s(qubit)
+        return qubit
 
-@squin.kernel
-def Rz_gate_injected(qubit, ancillas, sequence) -> Qubit:
-    return apply_injected_gate_sequence(qubit, ancillas, sequence)
-
-
-@squin.kernel
-def Rx_gate_injected(qubit, ancillas, sequence) -> Qubit:
-    squin.h(qubit)
-    qubit = apply_injected_gate_sequence(qubit, ancillas, sequence)
-    squin.h(qubit)
-    return qubit
-
-
-@squin.kernel
-def Ry_gate_injected(qubit, ancillas, sequence) -> Qubit:
-    squin.s(qubit)
-    squin.s(qubit)
-    squin.s(qubit)
-    squin.h(qubit)
-    qubit = apply_injected_gate_sequence(qubit, ancillas, sequence)
-    squin.h(qubit)
-    squin.s(qubit)
-    return qubit
+    return _ry
 
 
 @squin.kernel

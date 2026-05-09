@@ -1,6 +1,7 @@
 import cirq
 import numpy as np
 from bloqade import squin
+from bloqade.types import Qubit
 from qiskit.synthesis import gridsynth_rz
 
 _GATE_MAP = {
@@ -196,6 +197,61 @@ def make_postselected_dropout_kernel(sequence):
         return apply_postselected_gate_sequence(qubits[0], qubits[1:], sequence)
 
     return postselected_dropout_kernel
+
+
+# --- Injected gate gadgets ---
+
+@squin.kernel
+def Injected_T_gate(qubit, ancilla) -> Qubit:
+    # Prepare the magic state |A> = T|+> on the ancilla.
+    squin.h(ancilla)
+    squin.t(ancilla)
+
+    # Entangle the data qubit with the magic-state ancilla.
+    squin.cx(qubit, ancilla)
+
+    # Measure the ancilla.
+    measurement = squin.measure(ancilla)
+
+    # Feed-forward correction.
+    # If the measurement is 1, the data qubit has T^\dagger instead of T.
+    # Applying S gives S T^\dagger = T.
+    if measurement:
+        squin.s(qubit)
+
+    return qubit
+
+
+@squin.kernel
+def Injected_Tdg_gate(qubit, ancilla) -> Qubit:
+    qubit = Injected_T_gate(qubit, ancilla)
+    squin.s(qubit)
+    squin.s(qubit)
+    squin.s(qubit)
+    return qubit
+
+
+@squin.kernel
+def apply_injected_gate_sequence(qubit, ancillas, sequence) -> Qubit:
+    ancilla_index = 0
+
+    for gate_name in sequence:
+        if gate_name == "h":
+            squin.h(qubit)
+        elif gate_name == "s":
+            squin.s(qubit)
+        elif gate_name == "sdg":
+            squin.s(qubit)
+            squin.s(qubit)
+            squin.s(qubit)
+        elif gate_name == "t":
+            qubit = Injected_T_gate(qubit, ancillas[ancilla_index])
+            ancilla_index += 1
+        elif gate_name == "tdg":
+            qubit = Injected_Tdg_gate(qubit, ancillas[ancilla_index])
+            ancilla_index += 1
+
+    return qubit
 
 
 @squin.kernel
