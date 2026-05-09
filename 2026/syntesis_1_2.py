@@ -1,12 +1,30 @@
 from typing import Any
 
+import cirq
 import numpy as np
 
 from bloqade import squin
+from bloqade.cirq_utils import load_circuit
 from bloqade.types import Qubit
 from kirin.dialects.ilist import IList
+from qiskit import qasm2
+from qiskit.synthesis import gridsynth_rz
 
 Register = IList[Qubit, Any]
+
+_GATE_MAP = {
+    "h":   cirq.H,
+    "s":   cirq.S,
+    "sdg": cirq.S**-1,
+    "t":   cirq.T,
+    "tdg": cirq.T**-1,
+    "x":   cirq.X,
+}
+
+def _qiskit_to_cirq(qk_circ) -> cirq.Circuit:
+    q = cirq.LineQubit(0)
+    ops = [_GATE_MAP[instr.operation.name](q) for instr in qk_circ.data]
+    return cirq.Circuit(ops)
 
 def Rz(theta):
     return np.array([
@@ -168,17 +186,6 @@ def CCZ_gate(qubit1, qubit2, qubit3) -> Register:
     return [qubit1, qubit2, qubit3]
 
 
-@squin.kernel
-def Rz_gate(qubit, n) -> Register:
-    if (n == 0):
-        qubit = Z_gate(qubit)
-    elif (n == 1):
-        squin.s(qubit)
-    elif (n == 2):
-        squin.t(qubit)
-    elif (n in (3, 4, 5)):
-        # TODO: replace with an actual approximation for Rz(pi/2^n).
-        qubit = qubit
 
 
     return qubit
@@ -245,8 +252,6 @@ def apply_injected_gate_sequence(qubit, ancillas, sequence) -> Qubit:
             squin.s(qubit)
             squin.s(qubit)
             squin.s(qubit)
-        elif gate_name == "x":
-            squin.x(qubit)
         elif gate_name == "t":
             qubit = Injected_T_gate(qubit, ancillas[ancilla_index])
             ancilla_index += 1
@@ -276,8 +281,6 @@ def apply_postselected_gate_sequence(qubit, ancillas, sequence) -> int:
             squin.s(qubit)
             squin.s(qubit)
             squin.s(qubit)
-        elif gate_name == "x":
-            squin.x(qubit)
         elif gate_name == "t":
             measurement = Postselected_T_gate(qubit, ancillas[ancilla_index])
             dropout = dropout | measurement
@@ -300,3 +303,115 @@ def make_postselected_dropout_kernel(sequence):
         return apply_postselected_gate_sequence(qubits[0], qubits[1:], sequence)
 
     return postselected_dropout_kernel
+def Rz_gate(n: int, epsilon: float = 1e-10):
+    """Factory: restituisce un squin kernel che applica Rz(π/2^n) al qubit."""
+    if n == 0:
+        return X_gate
+
+    if n == 1:
+        @squin.kernel
+        def _rz_s(qubit) -> Register:
+            squin.s(qubit)
+            return qubit
+        return _rz_s
+
+    if n == 2:
+        @squin.kernel
+        def _rz_t(qubit) -> Register:
+            squin.t(qubit)
+            return qubit
+        return _rz_t
+
+    # n >= 3: usa gridsynth_rz per l'approssimazione Clifford+T
+    theta = np.pi / 2**n
+    qk_circ = gridsynth_rz(theta, epsilon=epsilon)
+    cirq_circ = _qiskit_to_cirq(qk_circ)
+    _inner = load_circuit(
+        cirq_circ,
+        kernel_name=f"Rz_{n}",
+        register_as_argument=True,
+        return_register=True,
+    )
+
+    @squin.kernel
+    def _rz_approx(qubit) -> Register:
+        _inner([qubit])
+        return qubit
+
+    return _rz_approx
+
+
+def Rx_gate(n: int, epsilon: float = 1e-10):
+    """Rx(π/2^n) = H · Rz(π/2^n) · H"""
+    rz = Rz_gate(n, epsilon)
+
+    @squin.kernel
+    def _rx(qubit) -> Register:
+        squin.h(qubit)
+        rz(qubit)
+        squin.h(qubit)
+        return qubit
+
+    return _rx
+
+
+def Ry_gate(n: int, epsilon: float = 1e-10):
+    """Ry(π/2^n) = S · H · Rz(π/2^n) · H · S†
+    S† implementato come S·S·S (S⁴ = I)
+    """
+    rz = Rz_gate(n, epsilon)
+
+    @squin.kernel
+    def _ry(qubit) -> Register:
+        squin.s(qubit)  # S† = S·S·S
+        squin.s(qubit)
+        squin.s(qubit)
+        squin.h(qubit)
+        rz(qubit)
+        squin.h(qubit)
+        squin.s(qubit)
+        return qubit
+
+    return _ry
+
+
+def print_metrics(n: int, epsilon: float = 1e-10) -> None:
+    """Stampa le metriche del circuito Clifford+T che approssima Rz(π/2^n)."""
+    theta = np.pi / 2**n
+
+    if n == 0:
+        print(f"Rz(π/2^{n}) = X  [gate esatto]")
+        print(f"  T-count   : 0")
+        print(f"  Clifford  : 4  (H S S H)")
+        print(f"  Total     : 4")
+        print(f"  Depth     : 4")
+        return
+
+    if n == 1:
+        print(f"Rz(π/2^{n}) = S  [gate esatto]")
+        print(f"  T-count   : 0")
+        print(f"  Clifford  : 1")
+        print(f"  Total     : 1")
+        print(f"  Depth     : 1")
+        return
+
+    if n == 2:
+        print(f"Rz(π/2^{n}) = T  [gate esatto]")
+        print(f"  T-count   : 1")
+        print(f"  Clifford  : 0")
+        print(f"  Total     : 1")
+        print(f"  Depth     : 1")
+        return
+
+    qk_circ = gridsynth_rz(theta, epsilon=epsilon)
+    ops = qk_circ.count_ops()
+    t_count = sum(ops.get(g, 0) for g in ("t", "tdg"))
+    clifford = sum(v for g, v in ops.items() if g not in ("t", "tdg"))
+    total = sum(ops.values())
+
+    print(f"Rz(π/2^{n})  θ={theta:.6f}  ε={epsilon:.0e}  [approssimato]")
+    print(f"  T-count   : {t_count}")
+    print(f"  Tdg-count : {ops.get('tdg', 0)}")
+    print(f"  Clifford  : {clifford}  {dict(ops)}")
+    print(f"  Total     : {total}")
+    print(f"  Depth     : {qk_circ.depth()}")

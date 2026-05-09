@@ -57,3 +57,17 @@ TSim:
 - TSim uses another data structure (stabilizer states) 
 - TSim can take QASM (modified) or Squin kernels
 - 
+
+
+
+
+
+---------------
+
+
+Challenge
+
+computing of slopes is done with epsilon [3,15] and n [3,11]:
+
+Media slope T-count  (n>=3): 3.0460
+Media slope Clifford (n>=3): 4.5659
