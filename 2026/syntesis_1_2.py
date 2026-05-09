@@ -186,10 +186,6 @@ def CCZ_gate(qubit1, qubit2, qubit3) -> Register:
     return [qubit1, qubit2, qubit3]
 
 
-
-
-    return qubit
-
 @squin.kernel
 def Injected_T_gate(qubit, ancilla) -> Qubit:
     # Prepare the magic state |A> = T|+> on the ancilla.

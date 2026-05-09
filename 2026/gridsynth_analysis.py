@@ -202,6 +202,62 @@ def plot_slopes(ns, t_slopes, t_intercepts, clf_slopes, clf_intercepts, t_r2s, c
     print("Plot salvato in gridsynth_slopes.png")
 
 
+def plot_global_fit(n_min: int, n_max: int, epsilons: list[float]) -> tuple[float, float]:
+    """Single plot: T-count data for all n on one axis + one global linear fit."""
+    all_x, all_y_t, all_y_c = [], [], []
+
+    cmap = plt.get_cmap("viridis")
+    ns_range = list(range(n_min, n_max + 1))
+    colors = [cmap(i / max(len(ns_range) - 1, 1)) for i in range(len(ns_range))]
+
+    fig, (ax_t, ax_c) = plt.subplots(1, 2, figsize=(16, 6))
+
+    for color, n in zip(colors, ns_range):
+        theta = np.pi / 2**n
+        t_counts, cliff_counts, valid_eps = analyze_epsilon(theta, epsilons)
+        if not valid_eps:
+            continue
+        x_log = np.log2(1.0 / np.array(valid_eps))
+        ax_t.scatter(x_log, t_counts, color=color, s=12, alpha=0.6)
+        ax_c.scatter(x_log, cliff_counts, color=color, s=12, alpha=0.6)
+        all_x.extend(x_log.tolist())
+        all_y_t.extend(t_counts)
+        all_y_c.extend(cliff_counts)
+
+    all_x = np.array(all_x)
+    all_y_t = np.array(all_y_t, dtype=float)
+    all_y_c = np.array(all_y_c, dtype=float)
+
+    results = {}
+    for ax, all_y, tag, theory_a in [(ax_t, all_y_t, "T", 3.0), (ax_c, all_y_c, "Clifford", 4.7)]:
+        (a, b), _ = curve_fit(lambda x, a, b: a * x + b, all_x, all_y)
+        x_fine = np.linspace(all_x.min(), all_x.max(), 300)
+        ax.plot(x_fine, a * x_fine + b, "r-", linewidth=2,
+                label=f"Global fit: {a:.3f}·log₂(1/ε) + {b:.2f}")
+        ax.plot(x_fine, theory_a * x_fine, "k--", linewidth=1.2, alpha=0.6,
+                label=f"Theory: {theory_a}·log₂(1/ε)")
+        ax.set_xlabel("log₂(1/ε)")
+        ax.set_ylabel("Gate count")
+        ax.set_title(f"{tag}-count — global fit  a={a:.4f}  b={b:.4f}")
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.3)
+        results[tag] = (a, b)
+        print(f"Global fit {tag}-count:  a = {a:.4f}  b = {b:.4f}")
+
+    sm = plt.cm.ScalarMappable(cmap="viridis",
+                               norm=plt.Normalize(vmin=n_min, vmax=n_max))
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax_c, fraction=0.046, pad=0.04)
+    cbar.set_label("n  (θ = π/2ⁿ)", rotation=270, labelpad=15)
+
+    plt.suptitle(f"gridsynth_rz global fit  n={n_min}..{n_max}", fontsize=13)
+    plt.tight_layout()
+    plt.savefig("gridsynth_global_fit.png", dpi=150)
+    plt.show()
+    print("Plot salvato in gridsynth_global_fit.png")
+    return results
+
+
 if __name__ == "__main__":
     epsilons = [10 ** (-e) for e in range(3, 50)]
     N_MAX = 100
@@ -212,6 +268,8 @@ if __name__ == "__main__":
                         help="n di partenza per entrambi i plot (default: 1)")
     parser.add_argument("--n-detail", type=int, default=10,
                         help="n finale per il plot dettagliato (default: 10)")
+    parser.add_argument("--n-global-max", type=int, default=40,
+                        help="n massimo per il global-fit plot (default: 40)")
     args, _ = parser.parse_known_args()
 
     n_start = max(1, args.n_start)
@@ -227,6 +285,9 @@ if __name__ == "__main__":
     print(f"Media intercetta (b) Clifford (n>=3): {clf_intercepts[mask].mean():.4f}")
 
     plot_slopes(ns, t_slopes, t_intercepts, clf_slopes, clf_intercepts, t_r2s, clf_r2s)
+
+    print("\nGlobal fit su tutti gli n...")
+    plot_global_fit(n_start, args.n_global_max, epsilons)
 
     print("\nCalcolo n_max(ε)...")
     max_ns = find_max_n(epsilons, n_max=N_MAX)
