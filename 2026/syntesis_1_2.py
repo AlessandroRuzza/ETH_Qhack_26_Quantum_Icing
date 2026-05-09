@@ -1,5 +1,7 @@
 from typing import Any
 
+import numpy as np
+
 from bloqade import squin
 from bloqade.types import Qubit
 from kirin.dialects.ilist import IList
@@ -30,8 +32,62 @@ T = np.array([
     [0, np.exp(1j * np.pi / 4)]
 ], dtype=complex)
 
+X = np.array([
+    [0, 1],
+    [1, 0]
+], dtype=complex)
+
+S_DAGGER = S.conj().T
+T_DAGGER = T.conj().T
+
 def gate_distance(U, V):
     return np.sqrt(1 - abs(np.trace(U.conj().T @ V)) / 2)
+
+
+def gate_sequence_from_circuit(circuit):
+    """Extract the one-qubit Clifford+T gate sequence emitted by gridsynth_rz."""
+    supported_gates = {"id", "h", "s", "sdg", "t", "tdg", "x"}
+    sequence = []
+
+    for instruction in circuit.data:
+        name = instruction.operation.name.lower()
+
+        if name in {"barrier", "delay"}:
+            continue
+
+        if len(instruction.qubits) != 1:
+            raise ValueError(f"Expected a one-qubit circuit, found gate {name!r}.")
+
+        if name not in supported_gates:
+            raise ValueError(f"Unsupported gate from synthesized circuit: {name!r}.")
+
+        if name != "id":
+            sequence.append(name)
+
+    return tuple(sequence)
+
+
+def unitary_from_gate_sequence(sequence):
+    """Build the logical one-qubit unitary for a Clifford+T gate sequence."""
+    gate_matrices = {
+        "h": H,
+        "s": S,
+        "sdg": S_DAGGER,
+        "t": T,
+        "tdg": T_DAGGER,
+        "x": X,
+    }
+
+    U = I.copy()
+
+    for gate_name in sequence:
+        U = gate_matrices[gate_name] @ U
+
+    return U
+
+
+def t_count_from_sequence(sequence):
+    return sum(gate_name in {"t", "tdg"} for gate_name in sequence)
 
 @squin.kernel
 def X_gate(qubit) -> Register:
@@ -147,98 +203,100 @@ def Injected_T_gate(qubit, ancilla) -> Qubit:
 
     return qubit
 
+
 @squin.kernel
-def Rz_gate_injected(qubit, ancillas, n) -> Register:
-    if (n == 0):
-        qubit = Z_gate(qubit)
+def Postselected_T_gate(qubit, ancilla) -> int:
+    # Same magic-state gadget as Injected_T_gate, but without feed-forward.
+    # A returned 1 marks a shot that must be dropped in postselection.
+    squin.h(ancilla)
+    squin.t(ancilla)
+    squin.cx(qubit, ancilla)
+    return squin.measure(ancilla)
 
-    elif (n == 1):
-        squin.s(qubit)
 
-    elif (n == 2):
-        # Rz(pi/4) = T, but T cannot be applied directly to the main qubit.
-        qubit = Injected_T_gate(qubit, ancillas[0])
+@squin.kernel
+def Injected_Tdg_gate(qubit, ancilla) -> Qubit:
+    qubit = Injected_T_gate(qubit, ancilla)
+    squin.s(qubit)
+    squin.s(qubit)
+    squin.s(qubit)
+    return qubit
 
-    elif (n == 3):
-        # Approximation used in Part 2:
-        # H T H T H T H T H S
-        # Here every T is replaced by Injected_T_gate.
 
-        squin.h(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[0])
+@squin.kernel
+def Postselected_Tdg_gate(qubit, ancilla) -> int:
+    measurement = Postselected_T_gate(qubit, ancilla)
+    squin.s(qubit)
+    squin.s(qubit)
+    squin.s(qubit)
+    return measurement
 
-        squin.h(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[1])
 
-        squin.h(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[2])
+@squin.kernel
+def apply_injected_gate_sequence(qubit, ancillas, sequence) -> Qubit:
+    ancilla_index = 0
 
-        squin.h(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[3])
-
-        squin.h(qubit)
-        squin.s(qubit)
-
-    elif (n == 4):
-        # Optimized approximation from Part 2:
-        # H T H T H T H S S S T H T H S S T H S H T H S S H S S H S H S S S T H S S T
-        # It contains 9 T gates, hence 9 injected T gadgets.
-
-        squin.h(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[0])
-
-        squin.h(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[1])
-
-        squin.h(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[2])
-
-        squin.h(qubit)
-        squin.s(qubit)
-        squin.s(qubit)
-        squin.s(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[3])
-
-        squin.h(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[4])
-
-        squin.h(qubit)
-        squin.s(qubit)
-        squin.s(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[5])
-
-        squin.h(qubit)
-        squin.s(qubit)
-
-        squin.h(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[6])
-
-        squin.h(qubit)
-        squin.s(qubit)
-        squin.s(qubit)
-
-        squin.h(qubit)
-        squin.s(qubit)
-        squin.s(qubit)
-
-        squin.h(qubit)
-        squin.s(qubit)
-
-        squin.h(qubit)
-        squin.s(qubit)
-        squin.s(qubit)
-        squin.s(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[7])
-
-        squin.h(qubit)
-        squin.s(qubit)
-        squin.s(qubit)
-        qubit = Injected_T_gate(qubit, ancillas[8])
-
-    elif (n == 5):
-        # Baseline approximation for Rz(pi/32): identity.
-        # This uses no T gates and therefore no injection.
-        qubit = qubit
+    for gate_name in sequence:
+        if gate_name == "h":
+            squin.h(qubit)
+        elif gate_name == "s":
+            squin.s(qubit)
+        elif gate_name == "sdg":
+            squin.s(qubit)
+            squin.s(qubit)
+            squin.s(qubit)
+        elif gate_name == "x":
+            squin.x(qubit)
+        elif gate_name == "t":
+            qubit = Injected_T_gate(qubit, ancillas[ancilla_index])
+            ancilla_index += 1
+        elif gate_name == "tdg":
+            qubit = Injected_Tdg_gate(qubit, ancillas[ancilla_index])
+            ancilla_index += 1
 
     return qubit
 
+
+@squin.kernel
+def Rz_gate_injected(qubit, ancillas, sequence) -> Qubit:
+    return apply_injected_gate_sequence(qubit, ancillas, sequence)
+
+
+@squin.kernel
+def apply_postselected_gate_sequence(qubit, ancillas, sequence) -> int:
+    ancilla_index = 0
+    dropout = False
+
+    for gate_name in sequence:
+        if gate_name == "h":
+            squin.h(qubit)
+        elif gate_name == "s":
+            squin.s(qubit)
+        elif gate_name == "sdg":
+            squin.s(qubit)
+            squin.s(qubit)
+            squin.s(qubit)
+        elif gate_name == "x":
+            squin.x(qubit)
+        elif gate_name == "t":
+            measurement = Postselected_T_gate(qubit, ancillas[ancilla_index])
+            dropout = dropout | measurement
+            ancilla_index += 1
+        elif gate_name == "tdg":
+            measurement = Postselected_Tdg_gate(qubit, ancillas[ancilla_index])
+            dropout = dropout | measurement
+            ancilla_index += 1
+
+    return dropout
+
+
+def make_postselected_dropout_kernel(sequence):
+    sequence = tuple(sequence)
+    ancilla_count = t_count_from_sequence(sequence)
+
+    @squin.kernel
+    def postselected_dropout_kernel() -> int:
+        qubits = squin.qalloc(1 + ancilla_count)
+        return apply_postselected_gate_sequence(qubits[0], qubits[1:], sequence)
+
+    return postselected_dropout_kernel
