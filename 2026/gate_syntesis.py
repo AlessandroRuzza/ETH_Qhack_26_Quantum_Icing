@@ -328,26 +328,34 @@ def test_steane_logical():
 
 @squin.kernel
 def Steane_prepare_magic_state_logical(q) -> Register:
+    # Encoding circuit dello screenshot (4 H, 1 T, 11 CX), rinumerato per
+    # essere compatibile con la convenzione Steane usata da
+    # Steane_zero_logical_graph e _steane_basis (free qubits: q[0], q[1], q[3];
+    # parity bits: q[2]=a⊕b, q[4]=a⊕c, q[5]=b⊕c, q[6]=a⊕b⊕c).
+    # Il qubit "magico" (con la T) finisce su q[2].
     squin.h(q[0])
     squin.h(q[1])
     squin.h(q[3])
+    squin.h(q[2])
+    squin.t(q[2])
 
-    squin.h(q[6])
-    squin.t(q[6])
+    squin.cx(q[0], q[6])
+    squin.cx(q[1], q[5])
+    squin.cx(q[2], q[4])
 
-    squin.cx(q[0], q[2])
-    squin.cx(q[1], q[2])
-
-    squin.cx(q[0], q[4])
+    squin.cx(q[1], q[6])
     squin.cx(q[3], q[4])
 
-    squin.cx(q[1], q[5])
+    squin.cx(q[2], q[5])
+
+    squin.cx(q[1], q[2])
+
     squin.cx(q[3], q[5])
 
-    for i in range(6):
-        squin.cx(q[6], q[i])
+    squin.cx(q[0], q[4])
 
-    squin.cx(q[2], q[6])
+    squin.cx(q[0], q[2])
+
     squin.cx(q[3], q[6])
 
     return q
@@ -356,29 +364,7 @@ def Steane_prepare_magic_state_logical(q) -> Register:
 @squin.kernel
 def Steane_magic_state_logical() -> Register:
     q = squin.qalloc(7)
-
-    squin.h(q[0])
-    squin.h(q[1])
-    squin.h(q[3])
-
-    squin.h(q[6])
-    squin.t(q[6])
-
-    squin.cx(q[0], q[2])
-    squin.cx(q[1], q[2])
-
-    squin.cx(q[0], q[4])
-    squin.cx(q[3], q[4])
-
-    squin.cx(q[1], q[5])
-    squin.cx(q[3], q[5])
-
-    for i in range(6):
-        squin.cx(q[6], q[i])
-
-    squin.cx(q[2], q[6])
-    squin.cx(q[3], q[6])
-
+    Steane_prepare_magic_state_logical(q)
     return q
 
 
@@ -456,53 +442,11 @@ def Steane_apply_logical_gate_sequence_reuse_magic(data_block, magic_block, sequ
             Steane_Sdg_logical(data_block)
 
         elif gate_name == "t":
-            squin.h(magic_block[0])
-            squin.h(magic_block[1])
-            squin.h(magic_block[3])
-
-            squin.h(magic_block[6])
-            squin.t(magic_block[6])
-
-            squin.cx(magic_block[0], magic_block[2])
-            squin.cx(magic_block[1], magic_block[2])
-
-            squin.cx(magic_block[0], magic_block[4])
-            squin.cx(magic_block[3], magic_block[4])
-
-            squin.cx(magic_block[1], magic_block[5])
-            squin.cx(magic_block[3], magic_block[5])
-
-            for i in range(6):
-                squin.cx(magic_block[6], magic_block[i])
-
-            squin.cx(magic_block[2], magic_block[6])
-            squin.cx(magic_block[3], magic_block[6])
-
+            Steane_prepare_magic_state_logical(magic_block)
             Steane_T_injection_logical(data_block, magic_block)
 
         elif gate_name == "tdg":
-            squin.h(magic_block[0])
-            squin.h(magic_block[1])
-            squin.h(magic_block[3])
-
-            squin.h(magic_block[6])
-            squin.t(magic_block[6])
-
-            squin.cx(magic_block[0], magic_block[2])
-            squin.cx(magic_block[1], magic_block[2])
-
-            squin.cx(magic_block[0], magic_block[4])
-            squin.cx(magic_block[3], magic_block[4])
-
-            squin.cx(magic_block[1], magic_block[5])
-            squin.cx(magic_block[3], magic_block[5])
-
-            for i in range(6):
-                squin.cx(magic_block[6], magic_block[i])
-
-            squin.cx(magic_block[2], magic_block[6])
-            squin.cx(magic_block[3], magic_block[6])
-
+            Steane_prepare_magic_state_logical(magic_block)
             Steane_Tdg_injection_logical(data_block, magic_block)
 
     return data_block
@@ -684,25 +628,24 @@ def part4_reused_magic_circuit_text(sequence, max_lines=300):
 
     def emit_magic_prepare(prefix):
         emit(f"prepare |A_L> on {prefix}")
-        for i in (0, 1, 3, 6):
+        for i in (0, 1, 2, 3):
             emit(f"  H {prefix}[{i}]")
-        emit(f"  T {prefix}[6]")
+        emit(f"  T {prefix}[2]")
 
         for control, target in (
-            (0, 2),
-            (1, 2),
-            (0, 4),
-            (3, 4),
+            (0, 6),
             (1, 5),
+            (2, 4),
+            (1, 6),
+            (3, 4),
+            (2, 5),
+            (1, 2),
             (3, 5),
+            (0, 4),
+            (0, 2),
+            (3, 6),
         ):
             emit(f"  CX {prefix}[{control}] -> {prefix}[{target}]")
-
-        for i in range(6):
-            emit(f"  CX {prefix}[6] -> {prefix}[{i}]")
-
-        emit(f"  CX {prefix}[2] -> {prefix}[6]")
-        emit(f"  CX {prefix}[3] -> {prefix}[6]")
 
     def emit_logical_cnot(control_prefix, target_prefix):
         emit(f"CNOT_L {control_prefix} -> {target_prefix}")
