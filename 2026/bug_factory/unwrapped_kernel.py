@@ -28,10 +28,6 @@ Claude says:
 Correct execution tail:
 "An NVIDIA GPU may be present on this machine, but a CUDA-enabled jaxlib is not installed. Falling back to cpu."
 (I indeed did not install bloqade-tsim[cuda13])
-
-Side note (running with bloqade-tsim[cuda13], but this is likely my system's fault):
-E0510 01:51:52.784399  122377 cuda_executor.cc:1743] Could not get kernel mode driver version: [INVALID_ARGUMENT: Version does not match the format X.Y.Z]
-E0510 01:51:52.809228  122186 cuda_executor.cc:1743] Could not get kernel mode driver version: [INVALID_ARGUMENT: Version does not match the format X.Y.Z]
 """
 
 # this will help us have return types for our methods that have more intuitive names
