@@ -9,7 +9,7 @@ from kirin.dialects.ilist import IList
 from qiskit.synthesis import gridsynth_rz
 
 from gate_syntesis_helpers import *
-from gate_syntesis_helpers import _qiskit_to_cirq
+from gate_syntesis_helpers import _qiskit_to_cirq, _RzMeta, _rz_metrics
 Register = IList[Qubit, Any]
 
 
@@ -101,6 +101,7 @@ def CCZ_gate(qubit1, qubit2, qubit3) -> Register:
 def Rz_gate(n: int, epsilon: float = 1e-10):
     """Factory: restituisce un squin kernel che applica Rz(π/2^n) al qubit."""
     if n == 0:
+        _rz_metrics[id(X_gate)] = _RzMeta(n=0, sequence=("h", "s", "s", "h"), theta=np.pi, circuit=None, ancillas=0)
         return X_gate
 
     if n == 1:
@@ -108,6 +109,7 @@ def Rz_gate(n: int, epsilon: float = 1e-10):
         def _rz_s(qubit) -> Register:
             squin.s(qubit)
             return qubit
+        _rz_metrics[id(_rz_s)] = _RzMeta(n=1, sequence=("s",), theta=np.pi / 2, circuit=None, ancillas=0)
         return _rz_s
 
     if n == 2:
@@ -115,11 +117,12 @@ def Rz_gate(n: int, epsilon: float = 1e-10):
         def _rz_t(qubit) -> Register:
             squin.t(qubit)
             return qubit
+        _rz_metrics[id(_rz_t)] = _RzMeta(n=2, sequence=("t",), theta=np.pi / 4, circuit=None, ancillas=0)
         return _rz_t
 
-    # n >= 3: usa gridsynth_rz per l'approssimazione Clifford+T
-    theta = np.pi / 2**n
-    qk_circ = gridsynth_rz(theta, epsilon=epsilon)
+    theta     = np.pi / 2**n
+    qk_circ   = gridsynth_rz(theta, epsilon=epsilon)
+    sequence  = gate_sequence_from_circuit(qk_circ)
     cirq_circ = _qiskit_to_cirq(qk_circ)
     _inner = load_circuit(
         cirq_circ,
@@ -133,6 +136,7 @@ def Rz_gate(n: int, epsilon: float = 1e-10):
         _inner([qubit])
         return qubit
 
+    _rz_metrics[id(_rz_approx)] = _RzMeta(n=n, sequence=sequence, theta=theta, circuit=qk_circ, ancillas=0)
     return _rz_approx
 
 
@@ -175,6 +179,7 @@ def Rz_gate_injected(n: int, epsilon: float = 1e-10):
     Per n=0,1 non servono ancillas e il kernel restituito prende solo (qubit,).
     """
     if n == 0:
+        _rz_metrics[id(X_gate)] = _RzMeta(n=0, sequence=("h", "s", "s", "h"), theta=np.pi, circuit=None, ancillas=0)
         return X_gate
 
     if n == 1:
@@ -182,14 +187,17 @@ def Rz_gate_injected(n: int, epsilon: float = 1e-10):
         def _rz_s(qubit) -> Register:
             squin.s(qubit)
             return qubit
+        _rz_metrics[id(_rz_s)] = _RzMeta(n=1, sequence=("s",), theta=np.pi / 2, circuit=None, ancillas=0)
         return _rz_s
 
     sequence = ("t",) if n == 2 else gate_sequence_from_circuit(gridsynth_rz(np.pi / 2**n, epsilon=epsilon))
+    anc = t_count_from_sequence(sequence)
 
     @squin.kernel
     def _rz_injected(qubit, ancillas) -> Qubit:
         return apply_injected_gate_sequence(qubit, ancillas, sequence)
 
+    _rz_metrics[id(_rz_injected)] = _RzMeta(n=n, sequence=sequence, theta=np.pi / 2**n, circuit=None, ancillas=anc)
     return _rz_injected
 
 

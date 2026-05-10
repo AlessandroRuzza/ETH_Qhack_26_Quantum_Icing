@@ -1,8 +1,12 @@
+from collections import namedtuple
+
 import cirq
 import numpy as np
 from bloqade import squin
 from bloqade.types import Qubit
 from qiskit.synthesis import gridsynth_rz
+
+_RzMeta = namedtuple("_RzMeta", ["n", "sequence", "theta", "circuit", "ancillas"])
 
 _GATE_MAP = {
     "h":   cirq.H,
@@ -99,45 +103,72 @@ def t_count_from_sequence(sequence):
     return sum(gate_name in {"t", "tdg"} for gate_name in sequence)
 
 
-def print_metrics(n: int, epsilon: float = 1e-10) -> None:
-    theta = np.pi / 2**n
+_rz_metrics = {}  # id(kernel) -> _RzMeta; squin Method objects don't support arbitrary attrs
 
-    if n == 0:
-        print(f"Rz(π/2^{n}) = X  [gate esatto]")
-        print(f"  T-count   : 0")
-        print(f"  Clifford  : 4  (H S S H)")
-        print(f"  Total     : 4")
-        print(f"  Depth     : 4")
-        return
 
-    if n == 1:
-        print(f"Rz(π/2^{n}) = S  [gate esatto]")
-        print(f"  T-count   : 0")
-        print(f"  Clifford  : 1")
-        print(f"  Total     : 1")
-        print(f"  Depth     : 1")
-        return
+def count_gates_from_kernel(kernel, verbose=False):
+    from kirin.passes.inline import InlinePass
+    from kirin.passes.aggressive.unroll import UnrollScf
 
-    if n == 2:
-        print(f"Rz(π/2^{n}) = T  [gate esatto]")
-        print(f"  T-count   : 1")
-        print(f"  Clifford  : 0")
-        print(f"  Total     : 1")
-        print(f"  Depth     : 1")
-        return
+    mt = kernel.similar()
+    InlinePass(dialects=mt.dialects).fixpoint(mt)
+    UnrollScf(dialects=mt.dialects).fixpoint(mt)
+    InlinePass(dialects=mt.dialects).fixpoint(mt)
 
-    qk_circ = gridsynth_rz(theta, epsilon=epsilon)
-    ops = qk_circ.count_ops()
-    t_count = sum(ops.get(g, 0) for g in ("t", "tdg"))
-    clifford = sum(v for g, v in ops.items() if g not in ("t", "tdg"))
-    total = sum(ops.values())
+    gate_map = {"h": "H", "s": "S", "t": "T", "x": "X", "cx": "CX", "measure": "M"}
+    counts = {}
 
-    print(f"Rz(π/2^{n})  θ={theta:.6f}  ε={epsilon:.0e}  [approssimato]")
-    print(f"  T-count   : {t_count}")
-    print(f"  Tdg-count : {ops.get('tdg', 0)}")
-    print(f"  Clifford  : {clifford}  {dict(ops)}")
-    print(f"  Total     : {total}")
-    print(f"  Depth     : {qk_circ.depth()}")
+    def walk(region):
+        for block in region.blocks:
+            for stmt in block.stmts:
+                if verbose:
+                    print(stmt.name)
+                gate = gate_map.get(stmt.name)
+                if gate:
+                    counts[gate] = counts.get(gate, 0) + 1
+                for sub in stmt.regions:
+                    walk(sub)
+
+    walk(mt.code.body)
+    return counts
+
+
+def print_gate_sequence(gate) -> None:
+    m = _rz_metrics.get(id(gate))
+    if m is None:
+        raise AttributeError("Gate has no registered metrics — create it with Rz_gate().")
+    seq = m.sequence
+    counts = {}
+    for g in seq:
+        counts[g] = counts.get(g, 0) + 1
+    breakdown = "  ".join(f"{g}x{n}" for g, n in counts.items())
+    print(f"Rz(π/2^{m.n})  len={len(seq)}")
+    print(f"  {breakdown}")
+    print(f"  {'  '.join(seq)}")
+
+
+def gate_summary(gate):
+    c = count_gates_from_kernel(gate)
+    return {
+        "clifford": c.get("H", 0) + c.get("S", 0),
+        "T":        c.get("T", 0),
+        "CNOT":     c.get("CX", 0),
+        "ancillas": c.get("M", 0),
+    }
+
+
+def print_metrics_split(gate) -> None:
+    m = _rz_metrics.get(id(gate))
+    if m is None:
+        raise AttributeError("Gate has no registered metrics — create it with Rz_gate().")
+
+    ir_counts = count_gates_from_kernel(gate)
+    N = m.ancillas
+
+    print(f"Rz(π/2^{m.n})  θ={m.theta:.6f}  ancillas={N}")
+    print(f"  From IR (whole kernel, all qubits combined):")
+    for g, n in sorted(ir_counts.items()):
+        print(f"    {g:<6}: {n}")
 
 
 # --- Postselected gate gadgets ---
@@ -197,6 +228,36 @@ def make_postselected_dropout_kernel(sequence):
         return apply_postselected_gate_sequence(qubits[0], qubits[1:], sequence)
 
     return postselected_dropout_kernel
+
+
+def Rz_gate_postselected(n: int, epsilon: float = 1e-10):
+    """Same as Rz_gate_injected but T/Tdg gates use postselected gadgets (no feed-forward).
+    Returns a kernel (qubit, ancillas) -> int where int is the dropout flag (1 = discard shot).
+    For n=0,1 no ancillas are needed; the returned kernel takes only (qubit,) and returns 0."""
+    if n == 0:
+        @squin.kernel
+        def _rz_x(qubit) -> int:
+            squin.h(qubit)
+            squin.s(qubit)
+            squin.s(qubit)
+            squin.h(qubit)
+            return 0
+        return _rz_x
+
+    if n == 1:
+        @squin.kernel
+        def _rz_s(qubit) -> int:
+            squin.s(qubit)
+            return 0
+        return _rz_s
+
+    sequence = ("t",) if n == 2 else gate_sequence_from_circuit(gridsynth_rz(np.pi / 2**n, epsilon=epsilon))
+
+    @squin.kernel
+    def _rz_postselected(qubit, ancillas) -> int:
+        return apply_postselected_gate_sequence(qubit, ancillas, sequence)
+
+    return _rz_postselected
 
 
 # --- Injected gate gadgets ---
@@ -263,3 +324,19 @@ def Steane_measure_logical_Z_weight3(q) -> int:
     return m0 ^ m1 ^ m2
 
     
+
+def statevector_fidelity(gate):
+    """For each n: simulate the synthesized Rz via its gate sequence (matrix product),
+    compute the exact Rz statevector, and return |<exact|approx>|^2."""
+    psi0 = np.array([1, 1], dtype=complex) / np.sqrt(2)  # |+>
+
+    m      = _rz_metrics.get(id(gate))
+    seq    = m.sequence
+    theta  = m.theta
+
+    psi_approx = unitary_from_gate_sequence(seq) @ psi0
+    psi_exact  = Rz(theta) @ psi0
+
+    braket    = np.vdot(psi_exact, psi_approx)           # <exact|approx>
+    fidelity  = abs(braket) ** 2
+    return fidelity
