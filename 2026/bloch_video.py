@@ -163,11 +163,12 @@ def make_bloch_video(
     print(f"n={n}  θ=π/2^{n}  sequence length={n_gates}  T-count={t_count}")
     print(f"Total animation frames: {n_frames}  ({n_frames/fps:.1f} s at {fps} fps)")
 
-    # ── build figure: left=3D sphere, right=XY cut-plane ─────────────────────
-    fig = plt.figure(figsize=(14, 7), facecolor="white")
-    ax3d = fig.add_subplot(121, projection="3d")
+    # ── build figure: 3D sphere | XY cut-plane | XZ cut-plane ───────────────
+    fig = plt.figure(figsize=(21, 7), facecolor="white")
+    ax3d = fig.add_subplot(131, projection="3d")
     ax3d.set_box_aspect([1, 1, 1])
-    ax2d = fig.add_subplot(122, aspect="equal")
+    ax2d = fig.add_subplot(132, aspect="equal")
+    ax_xz = fig.add_subplot(133, aspect="equal")
 
     # --- 3D Bloch sphere setup ---
     _draw_sphere(ax3d)
@@ -223,6 +224,42 @@ def make_bloch_video(
                            transform=ax2d.transAxes)
     ax2d.legend(loc="lower right", fontsize=8, framealpha=0.8)
 
+    # --- XZ cut-plane setup (y = 0, shows polar angle θ) ---
+    ax_xz.plot(np.cos(c), np.sin(c), color="gray", lw=1.2, alpha=0.5)
+    ax_xz.axhline(0, color="gray", lw=0.5, alpha=0.4)
+    ax_xz.axvline(0, color="gray", lw=0.5, alpha=0.4)
+    ax_xz.set_xlim(-1.5, 1.5); ax_xz.set_ylim(-1.5, 1.5)
+    ax_xz.set_xlabel("X (Bloch)", fontsize=10)
+    ax_xz.set_ylabel("Z (Bloch)", fontsize=10)
+    ax_xz.set_title("XZ cut-plane  (polar view, y=0)", fontsize=10)
+
+    for txt, xy in [("|+⟩", (1.3, 0)), ("|−⟩", (-1.3, 0)),
+                    ("|0⟩", (0, 1.3)), ("|1⟩", (0, -1.3))]:
+        ax_xz.text(*xy, txt, ha="center", va="center", fontsize=9, color="#555")
+
+    # orange disk = xz plane highlight on sphere boundary
+    theta_disk = np.linspace(0, 2*np.pi, 300)
+    ax_xz.fill(np.cos(theta_disk), np.sin(theta_disk),
+               color="#E07B39", alpha=0.08, zorder=0)
+
+    # target state projected onto xz (phi=0 component)
+    tgt_x_xz = tgt_bloch[0]
+    tgt_z_xz = tgt_bloch[2]
+    ax_xz.plot([0, tgt_x_xz], [0, tgt_z_xz],
+               "--", color="green", lw=1.2, alpha=0.7,
+               label=f"Target θ={np.degrees(np.arctan2(tgt_x_xz, tgt_z_xz)):.1f}°")
+    ax_xz.scatter([tgt_x_xz], [tgt_z_xz], color="green", s=200, marker="*", zorder=10)
+
+    state_xz,  = ax_xz.plot([0, 1], [0, 0], "-", color="red", lw=2.0, alpha=0.85)
+    dot_xz,    = ax_xz.plot([1],    [0],    "o", color="red", markersize=9, zorder=11)
+    trail_xz,  = ax_xz.plot([],    [],     "-", color="royalblue", alpha=0.4, lw=1.2)
+
+    arc_xz_pts = 60
+    arc_xz_line, = ax_xz.plot([], [], "-", color="#C05000", lw=2.0, alpha=0.8)
+    angle_xz_text = ax_xz.text(0.55, 0.10, "", fontsize=10, color="darkred",
+                                transform=ax_xz.transAxes)
+    ax_xz.legend(loc="lower right", fontsize=8, framealpha=0.8)
+
     # progress bar (2D axis overlay, below both subplots)
     bar_ax   = fig.add_axes([0.12, 0.03, 0.76, 0.018])
     bar_ax.set_xlim(0, n_gates); bar_ax.set_ylim(0, 1)
@@ -276,12 +313,40 @@ def make_bloch_video(
             f"Δ = {delta_deg:+.2f}°"
         )
 
+        # ── XZ cut-plane update ──
+        px_xz = pt[0]   # x component
+        pz_xz = pt[2]   # z component
+
+        if len(trail) >= 2:
+            tp_xz = np.array(trail)
+            trail_xz.set_data(tp_xz[:, 0], tp_xz[:, 2])
+
+        state_xz.set_data([0, px_xz], [0, pz_xz])
+        dot_xz.set_data([px_xz], [pz_xz])
+
+        # polar angle arc from z-axis to state vector
+        theta_cur = np.arctan2(px_xz, pz_xz)   # angle from +z axis
+        arc_xz_angles = np.linspace(0, theta_cur, arc_xz_pts)
+        arc_r_xz = 0.35
+        arc_xz_line.set_data(arc_r_xz * np.sin(arc_xz_angles),
+                              arc_r_xz * np.cos(arc_xz_angles))
+
+        tgt_theta = np.arctan2(tgt_x_xz, tgt_z_xz)
+        delta_theta = np.degrees(theta_cur - tgt_theta)
+        angle_xz_text.set_text(
+            f"θ = {np.degrees(theta_cur):.1f}°\n"
+            f"target = {np.degrees(tgt_theta):.1f}°\n"
+            f"Δ = {delta_theta:+.2f}°"
+        )
+
         # progress bar
         frac = (gate_idx + 1) / n_gates
         bar_fill.set_xy([[0, 0], [frac * n_gates, 0],
                          [frac * n_gates, 1], [0, 1]])
 
-        return trail_line, dot3d, title3d, state_line2d, dot2d, trail2d_line, arc_line, angle_text
+        return (trail_line, dot3d, title3d, state_line2d, dot2d,
+                trail2d_line, arc_line, angle_text,
+                state_xz, dot_xz, trail_xz, arc_xz_line, angle_xz_text)
 
     ani = animation.FuncAnimation(
         fig, _update, frames=n_frames, interval=int(1000 / fps), blit=False

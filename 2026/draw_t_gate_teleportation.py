@@ -2,127 +2,108 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import numpy as np
 
-fig, ax = plt.subplots(figsize=(14, 5))
+plt.rcParams['mathtext.fontset'] = 'cm'     # Computer Modern: \rangle renders as ⟩
+
+# figsize 16x5 → 1 unit = 1 inch in both axes, no need for equal aspect
+fig = plt.figure(figsize=(16, 5))
 fig.patch.set_facecolor('white')
+ax = fig.add_axes([0, 0, 1, 1])          # axes = intera figura
 ax.set_facecolor('white')
-ax.set_xlim(-1.5, 13.5)
-ax.set_ylim(0, 6)
-ax.set_aspect('equal')
+ax.set_xlim(0, 16)
+ax.set_ylim(0, 5)
 ax.axis('off')
 
-ORANGE_EDGE = '#D4783A'
-ORANGE_FILL = '#F9DFC0'
-BLUE       = '#2A4FB0'
-GRAY       = '#666666'
-GW, GH     = 0.70, 0.70   # gate box size
+OE = '#D4783A'      # orange edge
+OF = '#F9DFC0'      # orange fill
+BL = '#2A4FB0'      # blue (CNOT)
+GR = '#555555'      # gray (classical wire / labels)
+GW = GH = 0.72      # gate size (square, 0.72 in)
 
-data_y = 4.2
-anc_y  = 1.8
+dy_data = 3.5
+dy_anc  = 1.5
+x0      = 2.4       # wire start
 
-# ── Wire labels ──────────────────────────────────────────────────────────────
-ax.text(-1.4, data_y, r'data $|\psi\rangle$',   ha='left', va='center', fontsize=12)
-ax.text(-1.4, anc_y,  r'ancilla $|0\rangle$',   ha='left', va='center', fontsize=12)
+# ── Labels ───────────────────────────────────────────────────────────────────
+ax.text(x0 - 0.18, dy_data, r'data $|\psi\rangle$',
+        ha='right', va='center', fontsize=12)
+ax.text(x0 - 0.18, dy_anc,  r'ancilla $|0\rangle$',
+        ha='right', va='center', fontsize=12)
 
 # ── Wires ────────────────────────────────────────────────────────────────────
-wire_start = 1.0
-ax.plot([wire_start, 13.0], [data_y, data_y], 'k-', lw=1.6, zorder=1)
-ax.plot([wire_start, 11.5], [anc_y,  anc_y],  'k-', lw=1.6, zorder=1)
+Mx  = 10.8          # measurement x (needed here for ancilla wire termination)
+mw, mh = 0.82, 0.72
+Sx  = 13.2          # S gate x
+gap = 0.13          # classical wire half-separation
 
-# ── Output label ─────────────────────────────────────────────────────────────
-ax.text(13.1, data_y, r'$T|\psi\rangle$', ha='left', va='center', fontsize=12)
+ax.plot([x0, 15.5],           [dy_data, dy_data], 'k-', lw=1.6, zorder=1)
+# ancilla wire stops at left edge of measurement box
+ax.plot([x0, Mx - mw/2],      [dy_anc,  dy_anc],  'k-', lw=1.6, zorder=1)
 
+ax.text(15.6, dy_data, r'$T|\psi\rangle$', ha='left', va='center', fontsize=12)
 
-def gate_box(cx, cy, label, facecolor=ORANGE_FILL):
-    rect = patches.FancyBboxPatch(
+# ── Gate helper ───────────────────────────────────────────────────────────────
+def gate(cx, cy, lbl, fc=OF):
+    ax.add_patch(patches.FancyBboxPatch(
         (cx - GW/2, cy - GH/2), GW, GH,
-        boxstyle="round,pad=0.07",
-        linewidth=1.8, edgecolor=ORANGE_EDGE, facecolor=facecolor, zorder=4
-    )
-    ax.add_patch(rect)
-    ax.text(cx, cy, label, ha='center', va='center',
+        boxstyle='round,pad=0.07',
+        lw=1.8, edgecolor=OE, facecolor=fc, zorder=4))
+    ax.text(cx, cy, lbl, ha='center', va='center',
             fontsize=13, fontweight='bold', zorder=5)
 
-
 # ── H gate ───────────────────────────────────────────────────────────────────
-Hx = 2.5
-gate_box(Hx, anc_y, 'H')
+Hx = 4.2
+gate(Hx, dy_anc, 'H')
 
 # ── T gate ───────────────────────────────────────────────────────────────────
-Tx = 3.9
-gate_box(Tx, anc_y, 'T')
+Tx = 5.7
+gate(Tx, dy_anc, 'T')
 
-ax.text((Hx + Tx) / 2, anc_y - 0.80,
+ax.text((Hx+Tx)/2, dy_anc - 0.72,
         r'$|A\rangle = T|+\rangle$',
-        ha='center', va='top', fontsize=9.5, color=GRAY)
+        ha='center', va='top', fontsize=10, color=GR)
 
-# ── CNOT ─────────────────────────────────────────────────────────────────────
-Cx = 6.4
+# ── CNOT at x=8.2 ────────────────────────────────────────────────────────────
+Cx = 8.2
+ax.text(Cx, dy_data + 0.58, 'CNOT', ha='center', va='bottom', fontsize=11)
+ax.plot([Cx, Cx], [dy_anc, dy_data], color=BL, lw=2.0, zorder=3)
+ax.plot(Cx, dy_anc, 'o', color=BL, markersize=11, zorder=5)
 
-# label above
-ax.text(Cx, data_y + 0.58, 'CNOT', ha='center', va='bottom', fontsize=11)
-
-# vertical wire (control → target)
-ax.plot([Cx, Cx], [anc_y, data_y], color=BLUE, lw=2.0, zorder=3)
-
-# control dot on ancilla
-ax.plot(Cx, anc_y, 'o', color=BLUE, markersize=10, zorder=5)
-
-# target ⊕ on data
-R = 0.28
-circ = plt.Circle((Cx, data_y), R, color='white', ec=BLUE, lw=2.0, zorder=4)
-ax.add_patch(circ)
-ax.plot([Cx - R, Cx + R], [data_y, data_y], color=BLUE, lw=2.0, zorder=5)
-ax.plot([Cx, Cx], [data_y - R, data_y + R], color=BLUE, lw=2.0, zorder=5)
+R = 0.30
+ax.add_patch(plt.Circle((Cx, dy_data), R, color='white', ec=BL, lw=2.0, zorder=4))
+ax.plot([Cx-R, Cx+R], [dy_data, dy_data], color=BL, lw=2.0, zorder=5)
+ax.plot([Cx, Cx],     [dy_data-R, dy_data+R], color=BL, lw=2.0, zorder=5)
 
 # ── Measurement ──────────────────────────────────────────────────────────────
-Mx = 8.5
-mw, mh = 0.78, 0.68
-meas_rect = patches.FancyBboxPatch(
-    (Mx - mw/2, anc_y - mh/2), mw, mh,
-    boxstyle="round,pad=0.07",
-    linewidth=1.8, edgecolor=ORANGE_EDGE, facecolor='white', zorder=4
-)
-ax.add_patch(meas_rect)
+ax.add_patch(patches.FancyBboxPatch(
+    (Mx - mw/2, dy_anc - mh/2), mw, mh,
+    boxstyle='round,pad=0.07',
+    lw=1.8, edgecolor=OE, facecolor='white', zorder=4))
 
 # arc
-theta = np.linspace(np.pi, 0, 80)
-arc_r = 0.21
-arc_cy = anc_y - 0.05
-ax.plot(Mx + arc_r * np.cos(theta),
-        arc_cy + arc_r * 0.65 * np.sin(theta),
-        'k-', lw=1.4, zorder=5)
-# arrow from center to upper-right
-ax.annotate('', xy=(Mx + 0.17, anc_y + 0.18),
-            xytext=(Mx, arc_cy),
-            arrowprops=dict(arrowstyle='->', color='black', lw=1.4),
-            zorder=6)
+th = np.linspace(np.pi, 0, 80)
+ar, acy = 0.22, dy_anc - 0.06
+ax.plot(Mx + ar*np.cos(th), acy + ar*0.65*np.sin(th), 'k-', lw=1.4, zorder=5)
+ax.annotate('', xy=(Mx+0.19, dy_anc+0.19), xytext=(Mx, acy),
+            arrowprops=dict(arrowstyle='->', color='black', lw=1.4), zorder=6)
 
-ax.text(Mx, anc_y - 0.80, r'measure $M_z$',
-        ha='center', va='top', fontsize=9.5, color=GRAY)
+ax.text(Mx, dy_anc - 0.80, r'measure $M_z$',
+        ha='center', va='top', fontsize=10, color=GR)
 
-# ── Classical double wire ─────────────────────────────────────────────────────
-Sx   = 10.8
-gap  = 0.085
-cl_y = anc_y         # start height (middle of measurement box)
-
-# horizontal: from right edge of measurement box to x of S gate
-for dy in (-gap, gap):
-    ax.plot([Mx + mw/2, Sx], [cl_y + dy, cl_y + dy],
-            color=GRAY, lw=1.5, zorder=2)
-
-# vertical: from ancilla wire height up to bottom of S gate
-for dx in (-gap, gap):
-    ax.plot([Sx + dx, Sx + dx], [cl_y - gap, data_y - GH/2],
-            color=GRAY, lw=1.5, zorder=2)
+# ── Classical double wire: two continuous L-shaped rails ─────────────────────
+# Each rail: horizontal at dy_anc±gap → corner → vertical up to S gate bottom
+for sgn in (+1, -1):
+    d = sgn * gap
+    xs = [Mx + mw/2,  Sx + d,        Sx + d        ]
+    ys = [dy_anc + d,  dy_anc + d,    dy_data - GH/2]
+    ax.plot(xs, ys, color=GR, lw=1.6,
+            solid_joinstyle='miter', solid_capstyle='butt', zorder=3)
 
 # ── S gate ───────────────────────────────────────────────────────────────────
-gate_box(Sx, data_y, 'S')
-ax.text(Sx, data_y + GH/2 + 0.15, 'if $m = 1$',
-        ha='center', va='bottom', fontsize=9.5, color=GRAY)
+gate(Sx, dy_data, 'S')
+ax.text(Sx, dy_data + GH/2 + 0.15, 'if $m = 1$',
+        ha='center', va='bottom', fontsize=10, color=GR)
 
 # ─────────────────────────────────────────────────────────────────────────────
-plt.tight_layout(pad=0.1)
 plt.savefig('results/t_gate_teleportation_circuit.png',
             dpi=180, bbox_inches='tight', facecolor='white')
-plt.show()
-print("Salvato in results/t_gate_teleportation_circuit.png")
+print("Salvato.")
