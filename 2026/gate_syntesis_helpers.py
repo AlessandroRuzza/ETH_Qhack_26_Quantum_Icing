@@ -320,6 +320,10 @@ def Steane_measure_logical_Z_weight3(q) -> int:
     m0 = squin.measure(q[0])
     m1 = squin.measure(q[1])
     m2 = squin.measure(q[2])
+    squin.measure(q[3])
+    squin.measure(q[4])
+    squin.measure(q[5])
+    squin.measure(q[6])
 
     return m0 ^ m1 ^ m2
 

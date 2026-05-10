@@ -356,14 +356,38 @@ def Steane_prepare_magic_state_logical(q) -> Register:
 @squin.kernel
 def Steane_magic_state_logical() -> Register:
     q = squin.qalloc(7)
-    Steane_prepare_magic_state_logical(q)
+
+    squin.h(q[0])
+    squin.h(q[1])
+    squin.h(q[3])
+
+    squin.h(q[6])
+    squin.t(q[6])
+
+    squin.cx(q[0], q[2])
+    squin.cx(q[1], q[2])
+
+    squin.cx(q[0], q[4])
+    squin.cx(q[3], q[4])
+
+    squin.cx(q[1], q[5])
+    squin.cx(q[3], q[5])
+
+    for i in range(6):
+        squin.cx(q[6], q[i])
+
+    squin.cx(q[2], q[6])
+    squin.cx(q[3], q[6])
+
     return q
 
 
 @squin.kernel
 def Steane_T_logical_reset(logical_block) -> Register:
     for i in range(7):
-        squin.reset(logical_block[i])
+        m = squin.measure(logical_block[i])
+        if m:
+            squin.x(logical_block[i])
     return logical_block
 
 
@@ -432,11 +456,53 @@ def Steane_apply_logical_gate_sequence_reuse_magic(data_block, magic_block, sequ
             Steane_Sdg_logical(data_block)
 
         elif gate_name == "t":
-            Steane_prepare_magic_state_logical(magic_block)
+            squin.h(magic_block[0])
+            squin.h(magic_block[1])
+            squin.h(magic_block[3])
+
+            squin.h(magic_block[6])
+            squin.t(magic_block[6])
+
+            squin.cx(magic_block[0], magic_block[2])
+            squin.cx(magic_block[1], magic_block[2])
+
+            squin.cx(magic_block[0], magic_block[4])
+            squin.cx(magic_block[3], magic_block[4])
+
+            squin.cx(magic_block[1], magic_block[5])
+            squin.cx(magic_block[3], magic_block[5])
+
+            for i in range(6):
+                squin.cx(magic_block[6], magic_block[i])
+
+            squin.cx(magic_block[2], magic_block[6])
+            squin.cx(magic_block[3], magic_block[6])
+
             Steane_T_injection_logical(data_block, magic_block)
 
         elif gate_name == "tdg":
-            Steane_prepare_magic_state_logical(magic_block)
+            squin.h(magic_block[0])
+            squin.h(magic_block[1])
+            squin.h(magic_block[3])
+
+            squin.h(magic_block[6])
+            squin.t(magic_block[6])
+
+            squin.cx(magic_block[0], magic_block[2])
+            squin.cx(magic_block[1], magic_block[2])
+
+            squin.cx(magic_block[0], magic_block[4])
+            squin.cx(magic_block[3], magic_block[4])
+
+            squin.cx(magic_block[1], magic_block[5])
+            squin.cx(magic_block[3], magic_block[5])
+
+            for i in range(6):
+                squin.cx(magic_block[6], magic_block[i])
+
+            squin.cx(magic_block[2], magic_block[6])
+            squin.cx(magic_block[3], magic_block[6])
+
             Steane_Tdg_injection_logical(data_block, magic_block)
 
     return data_block
@@ -452,6 +518,17 @@ def make_part4_logical_fidelity_kernel_reuse_magic(sequence):
     """
     sequence = tuple(sequence)
 
+    if t_count_from_sequence(sequence) == 0:
+        @squin.kernel
+        def _part4_logical_fidelity_kernel():
+            data_block = Steane_zero_logical_graph()
+            Steane_H_logical(data_block)
+            Steane_apply_logical_gate_sequence(data_block, [], sequence)
+
+            return data_block
+
+        return _part4_logical_fidelity_kernel
+
     @squin.kernel
     def _part4_logical_fidelity_kernel():
         data_block = Steane_zero_logical_graph()
@@ -463,6 +540,215 @@ def make_part4_logical_fidelity_kernel_reuse_magic(sequence):
         return data_block
 
     return _part4_logical_fidelity_kernel
+
+
+def part4_logical_fidelity_qubit_count(sequence):
+    """Return the number of physical qubits allocated by the Part 4 fidelity kernel."""
+    return 14 if t_count_from_sequence(sequence) else 7
+
+
+@squin.kernel
+def Steane_T_logical_reset_diagram(logical_block) -> Register:
+    for i in range(7):
+        squin.reset(logical_block[i])
+    return logical_block
+
+
+@squin.kernel
+def Steane_T_injection_logical_diagram(data_block, magic_block) -> Register:
+    Steane_CNOT_logical(data_block, magic_block)
+
+    for i in range(7):
+        squin.measure(magic_block[i])
+
+    Steane_T_logical_reset_diagram(magic_block)
+
+    return data_block
+
+
+@squin.kernel
+def Steane_Tdg_injection_logical_diagram(data_block, magic_block) -> Register:
+    Steane_T_injection_logical_diagram(data_block, magic_block)
+    Steane_Sdg_logical(data_block)
+    return data_block
+
+
+@squin.kernel
+def Steane_apply_logical_gate_sequence_reuse_magic_diagram(data_block, magic_block, sequence) -> Register:
+    for gate_name in sequence:
+        if gate_name == "h":
+            Steane_H_logical(data_block)
+
+        elif gate_name == "s":
+            Steane_S_logical(data_block)
+
+        elif gate_name == "sdg":
+            Steane_Sdg_logical(data_block)
+
+        elif gate_name == "t":
+            Steane_prepare_magic_state_logical(magic_block)
+            Steane_T_injection_logical_diagram(data_block, magic_block)
+
+        elif gate_name == "tdg":
+            Steane_prepare_magic_state_logical(magic_block)
+            Steane_Tdg_injection_logical_diagram(data_block, magic_block)
+
+    return data_block
+
+
+def make_part4_tsim_diagram_kernel(sequence):
+    """Build a diagram-only Part 4 kernel compatible with tsim/Stim.
+
+    Stim emission cannot represent dynamic feed-forward branches, so this kernel
+    draws the physical gates, measurements, and reset operations. The numerical
+    fidelity cell still uses the feed-forward simulation kernel.
+    """
+    sequence = tuple(sequence)
+
+    @squin.kernel
+    def _part4_tsim_diagram_kernel():
+        data_block = squin.qalloc(7)
+        magic_block = squin.qalloc(7)
+
+        for i in range(7):
+            squin.h(data_block[i])
+
+        CZ_gate(data_block[0], data_block[6])
+
+        CZ_gate(data_block[1], data_block[3])
+        CZ_gate(data_block[5], data_block[3])
+
+        CZ_gate(data_block[0], data_block[4])
+        CZ_gate(data_block[5], data_block[6])
+
+        CZ_gate(data_block[1], data_block[2])
+        CZ_gate(data_block[0], data_block[2])
+
+        CZ_gate(data_block[5], data_block[4])
+        CZ_gate(data_block[1], data_block[4])
+
+        squin.h(data_block[2])
+        squin.h(data_block[3])
+        squin.h(data_block[4])
+        squin.h(data_block[6])
+
+        Steane_H_logical(data_block)
+        Steane_apply_logical_gate_sequence_reuse_magic_diagram(data_block, magic_block, sequence)
+
+    return _part4_tsim_diagram_kernel
+
+#used to print the circuit text for the Part 4 logical gate sequence with magic-state reuse, for documentation and resource estimation purposes.
+def part4_reused_magic_circuit_text(sequence, max_lines=300):
+    """Return a textual circuit expansion for Part 4 with one reused magic block."""
+    sequence = tuple(sequence)
+    lines = []
+
+    def emit(text):
+        lines.append(f"{len(lines):04d}: {text}")
+
+    def emit_steane_zero(prefix):
+        emit(f"qalloc {prefix}[0..6]")
+        for i in range(7):
+            emit(f"H {prefix}[{i}]")
+
+        for control, target in (
+            (0, 6),
+            (1, 3),
+            (5, 3),
+            (0, 4),
+            (5, 6),
+            (1, 2),
+            (0, 2),
+            (5, 4),
+            (1, 4),
+        ):
+            emit(f"CZ {prefix}[{control}], {prefix}[{target}]")
+
+        for i in (2, 3, 4, 6):
+            emit(f"H {prefix}[{i}]")
+
+    def emit_h_logical(prefix):
+        emit(f"H_L {prefix}")
+        for i in range(7):
+            emit(f"  H {prefix}[{i}]")
+
+    def emit_s_logical(prefix):
+        emit(f"S_L {prefix}")
+        for i in range(7):
+            emit(f"  S {prefix}[{i}]; S {prefix}[{i}]; S {prefix}[{i}]")
+
+    def emit_sdg_logical(prefix):
+        emit(f"Sdg_L {prefix}")
+        for i in range(7):
+            emit(f"  S {prefix}[{i}]")
+
+    def emit_magic_prepare(prefix):
+        emit(f"prepare |A_L> on {prefix}")
+        for i in (0, 1, 3, 6):
+            emit(f"  H {prefix}[{i}]")
+        emit(f"  T {prefix}[6]")
+
+        for control, target in (
+            (0, 2),
+            (1, 2),
+            (0, 4),
+            (3, 4),
+            (1, 5),
+            (3, 5),
+        ):
+            emit(f"  CX {prefix}[{control}] -> {prefix}[{target}]")
+
+        for i in range(6):
+            emit(f"  CX {prefix}[6] -> {prefix}[{i}]")
+
+        emit(f"  CX {prefix}[2] -> {prefix}[6]")
+        emit(f"  CX {prefix}[3] -> {prefix}[6]")
+
+    def emit_logical_cnot(control_prefix, target_prefix):
+        emit(f"CNOT_L {control_prefix} -> {target_prefix}")
+        for i in range(7):
+            emit(f"  CX {control_prefix}[{i}] -> {target_prefix}[{i}]")
+
+    def emit_magic_measure_reset(prefix):
+        emit(f"measure {prefix}[0..6]")
+        emit(f"parity = meas({prefix}[0]) xor meas({prefix}[1]) xor meas({prefix}[2])")
+        emit("if parity == 1: apply S_L data")
+        emit(f"reset {prefix}[0..6] by measure + conditional X")
+
+    emit_steane_zero("data")
+    emit("qalloc magic[0..6]")
+    emit_h_logical("data")
+
+    for index, gate_name in enumerate(sequence):
+        gate_name = gate_name.lower()
+        emit(f"-- sequence[{index}] = {gate_name.upper()} --")
+
+        if gate_name == "h":
+            emit_h_logical("data")
+        elif gate_name == "s":
+            emit_s_logical("data")
+        elif gate_name == "sdg":
+            emit_sdg_logical("data")
+        elif gate_name == "t":
+            emit_magic_prepare("magic")
+            emit_logical_cnot("data", "magic")
+            emit_magic_measure_reset("magic")
+        elif gate_name == "tdg":
+            emit_magic_prepare("magic")
+            emit_logical_cnot("data", "magic")
+            emit_magic_measure_reset("magic")
+            emit_sdg_logical("data")
+        else:
+            emit(f"unsupported gate {gate_name!r}")
+
+    if max_lines is not None and len(lines) > max_lines:
+        omitted = len(lines) - max_lines
+        shown = lines[:max_lines]
+        shown.append(f"... omitted {omitted} more circuit lines ...")
+        shown.append("Set max_lines=None to print the full circuit.")
+        return "\n".join(shown)
+
+    return "\n".join(lines)
 
 
 def make_part4_logical_fidelity_kernel(sequence):
