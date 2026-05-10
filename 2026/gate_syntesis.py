@@ -319,9 +319,7 @@ def test_steane_logical():
 
 
 @squin.kernel
-def Steane_magic_state_logical() -> Register:
-    q = squin.qalloc(7)
-
+def Steane_prepare_magic_state_logical(q) -> Register:
     squin.h(q[0])
     squin.h(q[1])
     squin.h(q[3])
@@ -344,6 +342,13 @@ def Steane_magic_state_logical() -> Register:
     squin.cx(q[2], q[6])
     squin.cx(q[3], q[6])
 
+    return q
+
+
+@squin.kernel
+def Steane_magic_state_logical() -> Register:
+    q = squin.qalloc(7)
+    Steane_prepare_magic_state_logical(q)
     return q
 
 
@@ -404,3 +409,91 @@ def Steane_apply_logical_gate_sequence(data_block, magic_blocks, sequence) -> Re
             magic_index += 1
 
     return data_block
+
+
+@squin.kernel
+def Steane_apply_logical_gate_sequence_reuse_magic(data_block, magic_block, sequence) -> Register:
+    for gate_name in sequence:
+        if gate_name == "h":
+            Steane_H_logical(data_block)
+
+        elif gate_name == "s":
+            Steane_S_logical(data_block)
+
+        elif gate_name == "sdg":
+            Steane_Sdg_logical(data_block)
+
+        elif gate_name == "t":
+            Steane_prepare_magic_state_logical(magic_block)
+            Steane_T_injection_logical(data_block, magic_block)
+
+        elif gate_name == "tdg":
+            Steane_prepare_magic_state_logical(magic_block)
+            Steane_Tdg_injection_logical(data_block, magic_block)
+
+    return data_block
+
+
+def make_part4_logical_fidelity_kernel_reuse_magic(sequence):
+    """Build a Part 4 fidelity kernel that simulates arbitrary T-count.
+
+    A single 7-qubit logical magic-state block is reused: before each T/Tdg
+    injection it is prepared as |A_L>, and the injection gadget resets it at the
+    end. This keeps the simulation at 14 physical qubits instead of allocating
+    one 7-qubit block per T gate.
+    """
+    sequence = tuple(sequence)
+
+    @squin.kernel
+    def _part4_logical_fidelity_kernel():
+        data_block = Steane_zero_logical_graph()
+        magic_block = squin.qalloc(7)
+
+        Steane_H_logical(data_block)
+        Steane_apply_logical_gate_sequence_reuse_magic(data_block, magic_block, sequence)
+
+        return data_block
+
+    return _part4_logical_fidelity_kernel
+
+
+def make_part4_logical_fidelity_kernel(sequence):
+    """Build a small Steane logical-state fidelity kernel.
+
+    The kernel prepares |0_L>, applies H_L so the following Rz_L has a visible
+    effect, then applies the Part 2 Clifford+T sequence using the Part 4 logical
+    gate implementation.
+
+    This helper intentionally supports only 0 or 1 injected T/Tdg gate, which is
+    enough for the small statevector checks in the notebook. Larger sequences
+    require many 7-qubit magic-state blocks and are better treated as resource
+    estimates.
+    """
+    sequence = tuple(sequence)
+    logical_t_count = t_count_from_sequence(sequence)
+
+    if logical_t_count == 0:
+        @squin.kernel
+        def _part4_logical_fidelity_kernel():
+            data_block = Steane_zero_logical_graph()
+            Steane_H_logical(data_block)
+            Steane_apply_logical_gate_sequence(data_block, [], sequence)
+            return data_block
+
+        return _part4_logical_fidelity_kernel
+
+    if logical_t_count == 1:
+        @squin.kernel
+        def _part4_logical_fidelity_kernel():
+            data_block = Steane_zero_logical_graph()
+            Steane_H_logical(data_block)
+            magic0 = Steane_magic_state_logical()
+            Steane_apply_logical_gate_sequence(data_block, [magic0], sequence)
+            return data_block
+
+        return _part4_logical_fidelity_kernel
+
+    raise ValueError(
+        "Part 4 statevector fidelity helper supports only sequences with "
+        f"0 or 1 T/Tdg gate; got {logical_t_count}."
+    )
