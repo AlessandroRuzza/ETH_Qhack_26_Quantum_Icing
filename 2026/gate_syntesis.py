@@ -333,10 +333,12 @@ def Steane_prepare_magic_state_logical(q) -> Register:
     # Steane_zero_logical_graph e _steane_basis (free qubits: q[0], q[1], q[3];
     # parity bits: q[2]=a⊕b, q[4]=a⊕c, q[5]=b⊕c, q[6]=a⊕b⊕c).
     # Il qubit "magico" (con la T) finisce su q[2].
+    # Tutti e 4 gli H nel medesimo time-step → la T appare subito dopo,
+    # come nell'Encoding circuit di riferimento (|7⟩: H → T → CX...).
     squin.h(q[0])
     squin.h(q[1])
+    squin.h(q[2])   # magic qubit: H prima, poi T → crea |A⟩ = T|+⟩
     squin.h(q[3])
-    squin.h(q[2])
     squin.t(q[2])
 
     squin.cx(q[0], q[6])

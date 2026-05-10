@@ -94,10 +94,10 @@ def plot_fidelity(rows, save_path=None):
     ax.plot(ns, fidelity, marker="o", color="steelblue")
     ax.axhline(1.0, color="gray", linestyle="--", linewidth=0.8)
     ax.set_xlabel("n")
-    ax.set_ylabel("|⟨exact|approx⟩|²")
+    ax.set_ylabel("Statevector fidelity")
     ax.set_title(f"Statevector fidelity  Rz(π/2^n)  (ε={EPSILON})")
     ax.set_xticks(ns)
-    ax.set_ylim(0, 1.05)
+    ax.set_ylim(0.5, 1.0)
     ax.grid(True)
     fig.tight_layout()
 
