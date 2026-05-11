@@ -13,6 +13,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Set the working directory
 WORKDIR /app
 
+# Enable bytecode compilation for faster app startup
+ENV UV_COMPILE_BYTECODE=1
+
 # Make the virtual environment active by adding its binary path to the top of $PATH
 # All subsequent Python commands (like gunicorn) will use this environment
 # ENV PATH="/app/.venv/bin:$PATH"
