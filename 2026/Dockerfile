@@ -4,7 +4,6 @@ FROM python:3.12-slim
 # Install Java (JRE)
 RUN apt-get update && \
     apt-get install -y default-jre && \
-    apt-get install -y uv && \
     apt-get clean;
 
 # Install uv directly from the official image
