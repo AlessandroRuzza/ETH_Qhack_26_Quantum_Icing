@@ -204,14 +204,19 @@ def run_self_tests() -> None:
     print("Backend self-tests passed.")
 
 
+def _no_cache(response):
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @app.route("/")
 def index():
-    return send_from_directory(APP_DIR, "demo.html")
+    return _no_cache(send_from_directory(APP_DIR, "demo.html"))
 
 
 @app.route("/demo.html")
 def demo():
-    return send_from_directory(APP_DIR, "demo.html")
+    return _no_cache(send_from_directory(APP_DIR, "demo.html"))
 
 
 @app.route("/api/health")

@@ -859,8 +859,12 @@ tgArr.visible = false;
 root.add(tgArr);
 
 const trailMat = new THREE.LineBasicMaterial({ color: 0x4ade80, transparent: true, opacity: .78 });
-let trailPts = [bloch(INIT), bloch(INIT)];
-const trailLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(trailPts), trailMat);
+const MAX_TRAIL_PTS = 16384;
+const trailBuf = new Float32Array(MAX_TRAIL_PTS * 3);
+const trailGeo = new THREE.BufferGeometry();
+trailGeo.setAttribute("position", new THREE.BufferAttribute(trailBuf, 3));
+trailGeo.setDrawRange(0, 0);
+const trailLine = new THREE.Line(trailGeo, trailMat);
 root.add(trailLine);
 
 const arcMat = new THREE.LineBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: .88 });
@@ -959,8 +963,14 @@ function hideExtras() {
 }
 
 function setTrail(pts) {
-  trailLine.geometry.dispose();
-  trailLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+  const n = Math.min(pts.length, MAX_TRAIL_PTS);
+  for (let i = 0; i < n; i++) {
+    trailBuf[i * 3]     = pts[i].x;
+    trailBuf[i * 3 + 1] = pts[i].y;
+    trailBuf[i * 3 + 2] = pts[i].z;
+  }
+  trailGeo.attributes.position.needsUpdate = true;
+  trailGeo.setDrawRange(0, n);
   trailLine.visible = $("trailToggle") ? $("trailToggle").checked : true;
 }
 
@@ -1145,8 +1155,7 @@ function reset() {
   setCol(stArr, 0x00e5ff);
   tgArr.visible = false;
   setGlow(iv, 0x00e5ff);
-  trailPts = [iv, iv];
-  setTrail(trailPts);
+  setTrail([iv]);
   curSeq = [];
   curGateObjects = [];
   setHUD("∅", "var(--cyan)", "—", "Ready", "Choose an axis or Euler angles, then press Synthesize. No browser fallback is used.");
