@@ -794,10 +794,20 @@ scene.add(rL);
 const root = new THREE.Group();
 scene.add(root);
 
-root.add(new THREE.Mesh(
-  new THREE.SphereGeometry(1, 64, 64),
-  new THREE.MeshPhysicalMaterial({ color: 0x1a2b5c, transparent: true, opacity: .38, roughness: .3, metalness: .1, clearcoat: 1 })
-));
+const sphereGeo = new THREE.SphereGeometry(1, 64, 64);
+const sphereBack = new THREE.Mesh(
+  sphereGeo,
+  new THREE.MeshPhysicalMaterial({ color: 0x1a2b5c, side: THREE.BackSide, roughness: .3, metalness: .1 })
+);
+sphereBack.renderOrder = 0;
+root.add(sphereBack);
+
+const sphereFront = new THREE.Mesh(
+  sphereGeo,
+  new THREE.MeshPhysicalMaterial({ color: 0x1a2b5c, transparent: true, opacity: .38, depthWrite: false, roughness: .3, metalness: .1, clearcoat: 1 })
+);
+sphereFront.renderOrder = 2;
+root.add(sphereFront);
 
 function greatCircle(normal, col, op) {
   const pts = [];
@@ -859,12 +869,13 @@ tgArr.visible = false;
 root.add(tgArr);
 
 const trailMat = new THREE.LineBasicMaterial({ color: 0x4ade80, transparent: true, opacity: .78 });
-const MAX_TRAIL_PTS = 16384;
+const MAX_TRAIL_PTS = 131072;
 const trailBuf = new Float32Array(MAX_TRAIL_PTS * 3);
 const trailGeo = new THREE.BufferGeometry();
 trailGeo.setAttribute("position", new THREE.BufferAttribute(trailBuf, 3));
 trailGeo.setDrawRange(0, 0);
 const trailLine = new THREE.Line(trailGeo, trailMat);
+trailLine.renderOrder = 1;
 root.add(trailLine);
 
 const arcMat = new THREE.LineBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: .88 });
