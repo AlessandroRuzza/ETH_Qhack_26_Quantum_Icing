@@ -199,6 +199,11 @@
       transition: border-color 140ms, box-shadow 140ms;
     }
 
+    select option {
+      background: #0d1424;
+      color: #e8f0ff;
+    }
+
     input[type=number]:focus, select:focus {
       border-color: rgba(139, 92, 246, .65);
       box-shadow: 0 0 0 3px rgba(139, 92, 246, .13);
@@ -479,6 +484,9 @@
     }
 
     .leg-row { display: flex; align-items: center; gap: 7px; }
+    .leg-row.interactive { pointer-events: all; cursor: pointer; user-select: none; }
+    .leg-row.interactive:hover { color: var(--text); }
+    .leg-check { width: 12px; height: 12px; accent-color: var(--green); flex-shrink: 0; cursor: pointer; }
 
     .leg-dot {
       width: 8px;
@@ -640,7 +648,10 @@
     <div class="legend">
       <div class="leg-row"><span class="leg-dot" style="color:var(--cyan); background:var(--cyan)"></span>current state</div>
       <div class="leg-row"><span class="leg-dot" style="color:var(--gold); background:var(--gold)"></span>exact target</div>
-      <div class="leg-row"><span class="leg-dot" style="color:var(--green); background:var(--green)"></span>trajectory trail</div>
+      <label class="leg-row interactive" title="Toggle trajectory trail">
+        <input class="leg-check" type="checkbox" id="trailToggle" checked>
+        <span class="leg-dot" style="color:var(--green); background:var(--green)"></span>trajectory trail
+      </label>
       <div class="leg-row"><span class="leg-dot" style="color:#a78bfa; background:#a78bfa"></span>H gate arc</div>
       <div class="leg-row"><span class="leg-dot" style="color:#fbbf24; background:#fbbf24"></span>T gate arc</div>
     </div>
@@ -950,6 +961,7 @@ function hideExtras() {
 function setTrail(pts) {
   trailLine.geometry.dispose();
   trailLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+  trailLine.visible = $("trailToggle") ? $("trailToggle").checked : true;
 }
 
 function setGlow(pos, col) {
@@ -1155,10 +1167,18 @@ function tween(ms, fn) {
   });
 }
 
+const TRAIL_SAMPLES = 48;
+
+function geodesicSamples(a, b, n) {
+  const pts = [];
+  for (let k = 1; k <= n; k++) pts.push(slerp(a, b, k / n));
+  return pts;
+}
+
 async function animSeq(tok, gateObjects, vecs) {
-  const trail = [vecs[0]];
+  const trailDense = [vecs[0]];
   setDir(stArr, vecs[0]);
-  setTrail([vecs[0], vecs[0]]);
+  setTrail(trailDense);
 
   if (!gateObjects.length) {
     setHUD("I", "var(--muted)", "0/0", "Identity", "The backend returned an empty circuit for this rotation.");
@@ -1178,18 +1198,17 @@ async function animSeq(tok, gateObjects, vecs) {
     setCol(stArr, info.col);
     glowMat.color.setHex(info.col);
     showArc(from, to, info.col);
-    showRing(info.axis, info.col);
 
     await tween(ms, (u) => {
       const e = u * u * (3 - 2 * u);
       const v = slerp(from, to, e);
       setDir(stArr, v);
       setGlow(v, info.col);
-      setTrail([...trail, v]);
+      setTrail([...trailDense, v]);
     });
 
-    trail.push(to);
-    setTrail(trail);
+    trailDense.push(...geodesicSamples(from, to, TRAIL_SAMPLES));
+    setTrail(trailDense);
     hideExtras();
   }
 
@@ -1308,6 +1327,9 @@ $("copyUrlBtn").addEventListener("click", async () => {
   }
 });
 
+const trailToggle = $("trailToggle");
+trailToggle.addEventListener("change", () => { trailLine.visible = trailToggle.checked; });
+
 let autoRot = true;
 controls.addEventListener("start", () => autoRot = false);
 controls.addEventListener("end", () => setTimeout(() => autoRot = true, 2000));
@@ -1315,10 +1337,6 @@ controls.addEventListener("end", () => setTimeout(() => autoRot = true, 2000));
 function loop() {
   controls.update();
   if (autoRot) root.rotation.y += .00055;
-  if (ring.visible) {
-    ring.rotation.z += .018;
-    ringMat.opacity = .42 + .2 * Math.sin(performance.now() * .003);
-  }
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
