@@ -1155,7 +1155,7 @@ function reset() {
   setCol(stArr, 0x00e5ff);
   tgArr.visible = false;
   setGlow(iv, 0x00e5ff);
-  setTrail([iv]);
+  setTrail([trailPt(iv)]);
   curSeq = [];
   curGateObjects = [];
   setHUD("∅", "var(--cyan)", "—", "Ready", "Choose an axis or Euler angles, then press Synthesize. No browser fallback is used.");
@@ -1176,16 +1176,20 @@ function tween(ms, fn) {
   });
 }
 
-const TRAIL_SAMPLES = 48;
+const TRAIL_SAMPLES = 256;
+
+const TRAIL_R = 1.012;
 
 function geodesicSamples(a, b, n) {
   const pts = [];
-  for (let k = 1; k <= n; k++) pts.push(slerp(a, b, k / n));
+  for (let k = 0; k <= n; k++) pts.push(slerp(a, b, k / n).multiplyScalar(TRAIL_R));
   return pts;
 }
 
+function trailPt(v) { return v.clone().multiplyScalar(TRAIL_R); }
+
 async function animSeq(tok, gateObjects, vecs) {
-  const trailDense = [vecs[0]];
+  const trailDense = [trailPt(vecs[0])];
   setDir(stArr, vecs[0]);
   setTrail(trailDense);
 
@@ -1213,7 +1217,7 @@ async function animSeq(tok, gateObjects, vecs) {
       const v = slerp(from, to, e);
       setDir(stArr, v);
       setGlow(v, info.col);
-      setTrail([...trailDense, v]);
+      setTrail([...trailDense, trailPt(v)]);
     });
 
     trailDense.push(...geodesicSamples(from, to, TRAIL_SAMPLES));
