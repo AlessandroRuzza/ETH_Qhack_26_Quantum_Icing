@@ -973,6 +973,9 @@ function hideExtras() {
   ringMat.opacity = 0;
 }
 
+let trailCommittedN = 0;
+let trailTotalN = 0;
+
 function setTrail(pts) {
   const n = Math.min(pts.length, MAX_TRAIL_PTS);
   for (let i = 0; i < n; i++) {
@@ -980,9 +983,22 @@ function setTrail(pts) {
     trailBuf[i * 3 + 1] = pts[i].y;
     trailBuf[i * 3 + 2] = pts[i].z;
   }
+  trailCommittedN = n;
+  trailTotalN = n;
   trailGeo.attributes.position.needsUpdate = true;
   trailGeo.setDrawRange(0, n);
   trailLine.visible = $("trailToggle") ? $("trailToggle").checked : true;
+}
+
+function appendLivePt(pt) {
+  if (trailTotalN >= MAX_TRAIL_PTS) return;
+  const i = trailTotalN;
+  trailBuf[i * 3]     = pt.x;
+  trailBuf[i * 3 + 1] = pt.y;
+  trailBuf[i * 3 + 2] = pt.z;
+  trailTotalN++;
+  trailGeo.attributes.position.needsUpdate = true;
+  trailGeo.setDrawRange(0, trailTotalN);
 }
 
 function setGlow(pos, col) {
@@ -1223,12 +1239,13 @@ async function animSeq(tok, gateObjects, vecs) {
     glowMat.color.setHex(info.col);
     showArc(from, to, info.col);
 
+    setTrail(trailDense);
     await tween(ms, (u) => {
       const e = u * u * (3 - 2 * u);
       const v = slerp(from, to, e);
       setDir(stArr, v);
       setGlow(v, info.col);
-      setTrail([...trailDense, trailPt(v)]);
+      appendLivePt(trailPt(v));
     });
 
     trailDense.push(...geodesicSamples(from, to, TRAIL_SAMPLES));
