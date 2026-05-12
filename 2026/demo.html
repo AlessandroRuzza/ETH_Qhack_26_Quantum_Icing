@@ -730,7 +730,7 @@ function bloch(psi) {
   const a = psi[0];
   const b = psi[1];
   const ab = mul(conj(a), b);
-  return new THREE.Vector3(2 * ab.re, 2 * ab.im, abs2(a) - abs2(b));
+  return new THREE.Vector3(2 * ab.re, abs2(a) - abs2(b), 2 * ab.im);
 }
 
 const GATES = {
@@ -851,10 +851,10 @@ function addAxis(dir, col, lbl) {
 }
 
 addAxis(new THREE.Vector3(1, 0, 0), 0x86a6ff, "|+⟩");
-addAxis(new THREE.Vector3(0, 1, 0), 0x86ffda, "|+i⟩");
-addAxis(new THREE.Vector3(0, 0, 1), 0xffdd86, "|0⟩");
+addAxis(new THREE.Vector3(0, 0, 1), 0x86ffda, "|+i⟩");
+addAxis(new THREE.Vector3(0, 1, 0), 0xffdd86, "|0⟩");
 const s1 = makeLabel("|1⟩", "#ff9966");
-s1.position.set(0, 0, -1.62);
+s1.position.set(0, -1.62, 0);
 s1.scale.set(.2, .1, 1);
 root.add(s1);
 const sm = makeLabel("|−⟩", "#6080cc");
